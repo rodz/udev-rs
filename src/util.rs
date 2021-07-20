@@ -1,10 +1,9 @@
 use std::ffi::{CString, OsStr};
 use std::io::Result;
 use std::slice;
+use std::os::wasi::ffi::OsStrExt;
 
 use libc::{c_char, c_int};
-
-use std::os::unix::prelude::*;
 
 pub fn ptr_to_os_str<'a>(ptr: *const c_char) -> Option<&'a OsStr> {
     if ptr.is_null() {

@@ -4,7 +4,6 @@ use std::ptr;
 use std::ffi::OsStr;
 use std::io::Result;
 use std::ops::Deref;
-use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(feature = "mio06")]
 use mio06::{event::Evented, unix::EventedFd, Poll, PollOpt, Ready, Token as Token06};
@@ -111,15 +110,6 @@ impl Builder {
         util::errno_to_result(unsafe { ffi::udev_monitor_filter_remove(self.monitor) })
             .and(Ok(self))
     }
-
-    /// Listens for events matching the current filters.
-    ///
-    /// This method consumes the `Monitor`.
-    pub fn listen(self) -> Result<Socket> {
-        util::errno_to_result(unsafe { ffi::udev_monitor_enable_receiving(self.monitor) })?;
-
-        Ok(Socket { inner: self })
-    }
 }
 
 /// An active monitor that can receive events.
@@ -133,39 +123,6 @@ impl Builder {
 #[derive(Clone)]
 pub struct Socket {
     inner: Builder,
-}
-
-impl AsRaw<ffi::udev_monitor> for Socket {
-    fn as_raw(&self) -> *mut ffi::udev_monitor {
-        self.inner.monitor
-    }
-
-    fn into_raw(self) -> *mut ffi::udev_monitor {
-        self.inner.monitor
-    }
-}
-
-/// Provides raw access to the monitor's socket.
-impl AsRawFd for Socket {
-    /// Returns the file descriptor of the monitor's socket.
-    fn as_raw_fd(&self) -> RawFd {
-        unsafe { ffi::udev_monitor_get_fd(self.inner.monitor) }
-    }
-}
-
-impl Iterator for Socket {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Event> {
-        let ptr = unsafe { ffi::udev_monitor_receive_device(self.inner.monitor) };
-
-        if ptr.is_null() {
-            None
-        } else {
-            let device = Device::from_raw(self.inner.udev.clone(), ptr);
-            Some(Event { device })
-        }
-    }
 }
 
 /// Types of events that can be received from udev.
@@ -249,57 +206,5 @@ impl Event {
     /// Returns the device associated with this event.
     pub fn device(&self) -> Device {
         self.device.clone()
-    }
-}
-
-#[cfg(feature = "mio06")]
-impl Evented for Socket {
-    fn register(
-        &self,
-        poll: &Poll,
-        token: Token06,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> std::io::Result<()> {
-        EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts)
-    }
-
-    fn reregister(
-        &self,
-        poll: &Poll,
-        token: Token06,
-        interest: Ready,
-        opts: PollOpt,
-    ) -> std::io::Result<()> {
-        EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts)
-    }
-
-    fn deregister(&self, poll: &Poll) -> std::io::Result<()> {
-        EventedFd(&self.as_raw_fd()).deregister(poll)
-    }
-}
-
-#[cfg(feature = "mio07")]
-impl Source for Socket {
-    fn register(
-        &mut self,
-        registry: &Registry,
-        token: Token07,
-        interest: Interest,
-    ) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).register(registry, token, interest)
-    }
-
-    fn reregister(
-        &mut self,
-        registry: &Registry,
-        token: Token07,
-        interest: Interest,
-    ) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).reregister(registry, token, interest)
-    }
-
-    fn deregister(&mut self, registry: &Registry) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).deregister(registry)
     }
 }
